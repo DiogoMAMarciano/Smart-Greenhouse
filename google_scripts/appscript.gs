@@ -8,7 +8,8 @@ function doGet(e) {
     var parts = data.split(";"); 
     var temp = parts[0].split(":")[1]; 
     var hum = parts[1].split(":")[1]; 
-    sheet.appendRow([new Date(), temp, hum]);
+    var ventilador = parts[2] ? parts[2].split(":")[1] : 0; // Adicionar ventilador se existir
+    sheet.appendRow([new Date(), temp, hum, ventilador]);
     return ContentService.createTextOutput("Dados adicionados");
   }
   
@@ -17,7 +18,13 @@ function doGet(e) {
     return HtmlService.createHtmlOutput(gerarGrafico(sheet));
   }
   
-  // Modo normal - devolve JSON
+  // Modo todos - devolve todos os dados do dia
+  if(modo == "todos") {
+    return ContentService.createTextOutput(JSON.stringify(getTodosOsDados(sheet)))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Modo normal - devolve última leitura (compatível com MIT App Inventor)
   var lastRow = sheet.getLastRow();
   
   if (lastRow < 2) {
@@ -32,20 +39,54 @@ function doGet(e) {
   );
   var temperatura = sheet.getRange(lastRow, 2).getValue();
   var humidade = sheet.getRange(lastRow, 3).getValue();
+  var ventilador = sheet.getRange(lastRow, 4).getValue() || 0;
   
   var resultado = {
     "Data": dataHora,
     "Temperatura": temperatura,
-    "Humidade": humidade
+    "Humidade": humidade,
+    "Ventilador": ventilador
   };
   
   return ContentService.createTextOutput(JSON.stringify(resultado))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Nova função para retornar todos os dados do dia atual
+function getTodosOsDados(sheet) {
+  var hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  
+  var lastRow = sheet.getLastRow();
+  var dados = [];
+  
+  // Ler todas as linhas a partir da linha 2 (pulando o cabeçalho)
+  for (var i = 2; i <= lastRow; i++) {
+    var dataHora = sheet.getRange(i, 1).getValue();
+    
+    // Verificar se é do dia de hoje
+    if (dataHora >= hoje) {
+      var dataFormatada = Utilities.formatDate(
+        dataHora,
+        "Europe/Lisbon",
+        "yyyy/MM/dd HH:mm:ss"
+      );
+      
+      dados.push({
+        "Data": dataFormatada,
+        "Temperatura": sheet.getRange(i, 2).getValue(),
+        "Humidade": sheet.getRange(i, 3).getValue(),
+        "Ventilador": sheet.getRange(i, 4).getValue() || 0
+      });
+    }
+  }
+  
+  return dados;
+}
+
 function gerarGrafico(sheet) {
   var lastRow = sheet.getLastRow();
-  var numLinhas = Math.min(lastRow - 1, 20); // Últimas 20 leituras
+  var numLinhas = Math.min(lastRow - 1, 20);
   
   var labels = [];
   var temps = [];
