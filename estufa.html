@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Estufa - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-custom {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+        <!-- Cabeçalho -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 class="text-3xl font-bold text-green-800 flex items-center gap-2">
+                        🌱 Monitor de Estufa <span id="statusIndicator" class="text-sm">🔄</span>
+                    </h1>
+                    <p class="text-gray-600 mt-1">Dados em tempo real do Google Sheets</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-3">
+                    <button id="configBtn" class="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                        ⚙️ Configurar
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Painel de Configurações -->
+            <div id="configPanel" class="hidden border-t pt-4 mt-4">
+                <h3 class="font-semibold text-gray-700 mb-3">Configurações de Limites</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Temp. Máxima (°C)</label>
+                        <input type="number" id="tempMax" value="32" class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Temp. Mínima (°C)</label>
+                        <input type="number" id="tempMin" value="15" class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Humidade Mín. (%)</label>
+                        <input type="number" id="humidadeMin" value="50" class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Humidade Máx. (%)</label>
+                        <input type="number" id="humidadeMax" value="80" class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Alertas -->
+        <div id="alertsContainer" class="mb-6 space-y-2"></div>
+        
+        <!-- Cards de Valores Atuais -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <!-- Temperatura -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-2xl">🌡️</span>
+                    <h3 class="text-lg font-semibold text-gray-700">Temperatura</h3>
+                </div>
+                <div id="tempValue" class="text-5xl font-bold text-green-600 mb-2">22.0°C</div>
+                <div id="tempLimits" class="text-sm text-gray-500">Limites: 15°C - 32°C</div>
+                <div class="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div id="tempBar" class="h-full bg-green-500 transition-all" style="width: 55%"></div>
+                </div>
+            </div>
+            
+            <!-- Humidade -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-2xl">💧</span>
+                    <h3 class="text-lg font-semibold text-gray-700">Humidade</h3>
+                </div>
+                <div id="humidityValue" class="text-5xl font-bold text-blue-600 mb-2">65.0%</div>
+                <div id="humidityLimits" class="text-sm text-gray-500">Limites: 50% - 80%</div>
+                <div class="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div id="humidityBar" class="h-full bg-blue-500 transition-all" style="width: 65%"></div>
+                </div>
+            </div>
+            
+            <!-- Ventilador -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-2xl">💨</span>
+                    <h3 class="text-lg font-semibold text-gray-700">Ventilador</h3>
+                </div>
+                <div id="fanValue" class="text-5xl font-bold text-gray-400 mb-2">DESLIGADO</div>
+                <div id="fanStatus" class="text-sm text-gray-500">Em espera</div>
+                <div class="mt-4">
+                    <div id="fanIndicator" class="w-full h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl bg-gray-300 transition-all">
+                        ⏸️ INATIVO
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gráficos -->
+        <div class="mb-6">
+            <!-- Gráfico Combinado do Dia -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    📊 Histórico do Dia (00:00 até agora)
+                </h3>
+                <div style="height: 400px;">
+                    <canvas id="dayChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Última atualização -->
+        <div class="text-center text-sm text-gray-500">
+            Última atualização: <span id="lastUpdate">---</span>
+        </div>
+    </div>
+
+    <script>
+        // Configuração da API
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGloDdQnQ6oxPiXHaJ7_O611ogzWb37KAjVIkZPvwgVv9BRi4bQjX6nnMy7FisMt_3/exec?modo=todos';
+        
+        // Estado da aplicação
+        let currentData = {
+            temperatura: 22.0,
+            humidade: 65.0,
+            ventilador: 0,
+            timestamp: new Date()
+        };
+        
+        let config = {
+            tempMax: 32,
+            tempMin: 15,
+            humidadeMin: 50,
+            humidadeMax: 80
+        };
+        
+        let historico = [];
+        let historicoDia = [];
+        let isLoadingData = false;
+        
+        // Buscar dados do Google Sheets
+        async function fetchDataFromSheets() {
+            if (isLoadingData) return;
+            
+            try {
+                isLoadingData = true;
+                document.getElementById('statusIndicator').textContent = '🔄';
+                console.log('A buscar dados de:', GOOGLE_SCRIPT_URL);
+                
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                console.log('Resposta recebida. Status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Dados recebidos:', data);
+                console.log('Número de linhas:', data ? data.length : 0);
+                
+                if (data && data.length > 0) {
+                    console.log('Primeira linha:', data[0]);
+                    processSheetData(data);
+                    document.getElementById('statusIndicator').textContent = '✅';
+                } else {
+                    document.getElementById('statusIndicator').textContent = '⚠️';
+                    console.warn('Nenhum dado recebido do Google Sheets');
+                }
+            } catch (error) {
+                console.error('ERRO COMPLETO:', error);
+                console.error('Mensagem:', error.message);
+                console.error('Stack:', error.stack);
+                document.getElementById('statusIndicator').textContent = '❌';
+                
+                // Mostrar erro na página
+                const alertsContainer = document.getElementById('alertsContainer');
+                alertsContainer.innerHTML = `
+                    <div class="flex items-center gap-2 p-4 rounded-lg bg-red-100 border border-red-300 text-red-800">
+                        <span>❌</span>
+                        <span class="font-medium">Erro ao carregar dados: ${error.message}</span>
+                    </div>`;
+            } finally {
+                isLoadingData = false;
+            }
+        }
+        
+        // Processar dados recebidos do Google Sheets
+        function processSheetData(data) {
+            console.log('A processar', data.length, 'linhas de dados');
+            historicoDia = [];
+            
+            // Processar cada linha de dados
+            data.forEach((row, index) => {
+                console.log(`Linha ${index}:`, row);
+                
+                if (row.Data && row.Temperatura !== undefined && row.Humidade !== undefined) {
+                    const dataStr = row.Data;
+                    const temp = parseFloat(row.Temperatura);
+                    const hum = parseFloat(row.Humidade);
+                    const fan = parseInt(row.Ventilador) || 0;
+                    
+                    console.log(`  Data: "${dataStr}", Temp: ${temp}, Hum: ${hum}, Fan: ${fan}`);
+                    
+                    // Extrair hora do formato "2025/12/20 00:00:00"
+                    let timeStr = '';
+                    try {
+                        if (dataStr.includes(' ')) {
+                            const parts = dataStr.split(' ');
+                            if (parts.length >= 2) {
+                                const timePart = parts[1];
+                                timeStr = timePart.substring(0, 5); // Pegar apenas HH:MM
+                            }
+                        }
+                        console.log(`  Hora extraída: "${timeStr}"`);
+                    } catch (e) {
+                        console.error('Erro ao processar data:', dataStr, e);
+                    }
+                    
+                    if (timeStr && !isNaN(temp) && !isNaN(hum)) {
+                        historicoDia.push({
+                            time: timeStr,
+                            temperatura: temp,
+                            humidade: hum,
+                            ventilador: fan
+                        });
+                        console.log(`  ✓ Linha adicionada ao histórico`);
+                    } else {
+                        console.log(`  ✗ Linha ignorada (dados inválidos)`);
+                    }
+                } else {
+                    console.log(`  ✗ Linha ignorada (falta dados)`);
+                }
+            });
+            
+            console.log('Total de entradas processadas:', historicoDia.length);
+            
+            // Ordenar por hora
+            historicoDia.sort((a, b) => a.time.localeCompare(b.time));
+            
+            // Atualizar dados atuais com a última entrada
+            if (historicoDia.length > 0) {
+                const lastEntry = historicoDia[historicoDia.length - 1];
+                console.log('Última entrada:', lastEntry);
+                
+                currentData = {
+                    temperatura: lastEntry.temperatura,
+                    humidade: lastEntry.humidade,
+                    ventilador: lastEntry.ventilador,
+                    timestamp: new Date()
+                };
+                
+                updateUI();
+                updateCharts();
+            } else {
+                console.warn('Nenhuma entrada válida no histórico!');
+            }
+        }
+        
+
+        
+        // Gráficos
+        const dayChartCtx = document.getElementById('dayChart').getContext('2d');
+        
+        const dayChart = new Chart(dayChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperatura (°C)',
+                        data: [],
+                        borderColor: '#f97316',
+                        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Humidade (%)',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        min: 0,
+                        max: 40,
+                        title: {
+                            display: true,
+                            text: 'Temperatura (°C)'
+                        },
+                        ticks: {
+                            stepSize: 5
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        min: 0,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Humidade (%)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            stepSize: 10
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 12,
+                            autoSkip: true
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+        
+        const tempChart = {
+            data: { labels: [], datasets: [{ data: [] }] },
+            options: { scales: { y: { min: 0, max: 40 } } },
+            update: function() {}
+        };
+        
+        const humidityChart = {
+            data: { labels: [], datasets: [{ data: [] }] },
+            options: { scales: { y: { min: 0, max: 100 } } },
+            update: function() {}
+        };
+        
+        // Atualizar interface
+        function updateUI() {
+            const temp = currentData.temperatura;
+            const humidity = currentData.humidade;
+            const fan = currentData.ventilador;
+            
+            // Temperatura
+            const tempColor = temp > config.tempMax ? 'text-red-600' : 
+                            temp < config.tempMin ? 'text-blue-600' : 'text-green-600';
+            document.getElementById('tempValue').className = `text-5xl font-bold ${tempColor} mb-2`;
+            document.getElementById('tempValue').textContent = `${temp.toFixed(1)}°C`;
+            document.getElementById('tempLimits').textContent = `Limites: ${config.tempMin}°C - ${config.tempMax}°C`;
+            document.getElementById('tempBar').style.width = `${Math.min(100, (temp / 40) * 100)}%`;
+            document.getElementById('tempBar').className = temp > config.tempMax ? 
+                'h-full bg-red-500 transition-all' : 'h-full bg-green-500 transition-all';
+            
+            // Humidade
+            const humidityColor = humidity < config.humidadeMin || humidity > config.humidadeMax ? 
+                'text-yellow-600' : 'text-blue-600';
+            document.getElementById('humidityValue').className = `text-5xl font-bold ${humidityColor} mb-2`;
+            document.getElementById('humidityValue').textContent = `${humidity.toFixed(1)}%`;
+            document.getElementById('humidityLimits').textContent = `Limites: ${config.humidadeMin}% - ${config.humidadeMax}%`;
+            document.getElementById('humidityBar').style.width = `${humidity}%`;
+            
+            // Ventilador
+            if (fan === 1) {
+                document.getElementById('fanValue').className = 'text-5xl font-bold text-green-600 mb-2';
+                document.getElementById('fanValue').textContent = 'LIGADO';
+                document.getElementById('fanStatus').textContent = 'A arrefecer a estufa';
+                document.getElementById('fanIndicator').className = 'w-full h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl bg-green-500 animate-pulse-custom transition-all';
+                document.getElementById('fanIndicator').textContent = '💨 ATIVO';
+            } else {
+                document.getElementById('fanValue').className = 'text-5xl font-bold text-gray-400 mb-2';
+                document.getElementById('fanValue').textContent = 'DESLIGADO';
+                document.getElementById('fanStatus').textContent = 'Em espera';
+                document.getElementById('fanIndicator').className = 'w-full h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl bg-gray-300 transition-all';
+                document.getElementById('fanIndicator').textContent = '⏸️ INATIVO';
+            }
+            
+            // Última atualização
+            document.getElementById('lastUpdate').textContent = currentData.timestamp.toLocaleString('pt-PT');
+            
+            // Alertas
+            checkAlerts();
+        }
+        
+        function checkAlerts() {
+            const alertsContainer = document.getElementById('alertsContainer');
+            alertsContainer.innerHTML = '';
+            
+            const temp = currentData.temperatura;
+            const humidity = currentData.humidade;
+            
+            if (temp > config.tempMax) {
+                alertsContainer.innerHTML += `
+                    <div class="flex items-center gap-2 p-4 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-800">
+                        <span>⚠️</span>
+                        <span class="font-medium">Temperatura elevada: ${temp.toFixed(1)}°C</span>
+                    </div>`;
+            }
+            
+            if (temp < config.tempMin) {
+                alertsContainer.innerHTML += `
+                    <div class="flex items-center gap-2 p-4 rounded-lg bg-blue-100 border border-blue-300 text-blue-800">
+                        <span>ℹ️</span>
+                        <span class="font-medium">Temperatura baixa: ${temp.toFixed(1)}°C</span>
+                    </div>`;
+            }
+            
+            if (humidity < config.humidadeMin) {
+                alertsContainer.innerHTML += `
+                    <div class="flex items-center gap-2 p-4 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-800">
+                        <span>⚠️</span>
+                        <span class="font-medium">Humidade baixa: ${humidity.toFixed(1)}%</span>
+                    </div>`;
+            }
+            
+            if (humidity > config.humidadeMax) {
+                alertsContainer.innerHTML += `
+                    <div class="flex items-center gap-2 p-4 rounded-lg bg-blue-100 border border-blue-300 text-blue-800">
+                        <span>ℹ️</span>
+                        <span class="font-medium">Humidade elevada: ${humidity.toFixed(1)}%</span>
+                    </div>`;
+            }
+        }
+        
+        function updateCharts() {
+            const time = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+            
+            // Adicionar ao histórico recente
+            historico.push({
+                time: time,
+                temperatura: currentData.temperatura,
+                humidade: currentData.humidade
+            });
+            
+            // Manter apenas últimos 20 pontos
+            if (historico.length > 20) {
+                historico.shift();
+            }
+            
+            // Atualizar gráficos recentes
+            tempChart.data.labels = historico.map(h => h.time);
+            tempChart.data.datasets[0].data = historico.map(h => h.temperatura);
+            tempChart.options.scales.y.min = 0;
+            tempChart.options.scales.y.max = 40;
+            tempChart.update('none');
+            
+            humidityChart.data.labels = historico.map(h => h.time);
+            humidityChart.data.datasets[0].data = historico.map(h => h.humidade);
+            humidityChart.options.scales.y.min = 0;
+            humidityChart.options.scales.y.max = 100;
+            humidityChart.update('none');
+            
+            // Atualizar gráfico do dia
+            dayChart.data.labels = historicoDia.map(h => h.time);
+            dayChart.data.datasets[0].data = historicoDia.map(h => h.temperatura);
+            dayChart.data.datasets[1].data = historicoDia.map(h => h.humidade);
+            dayChart.options.scales.y.min = 0;
+            dayChart.options.scales.y.max = 40;
+            dayChart.options.scales.y1.min = 0;
+            dayChart.options.scales.y1.max = 100;
+            dayChart.update('none');
+        }
+        
+        // Simulação contínua (desativada - usando dados reais)
+        function simulate() {
+            // Não simula mais, apenas atualiza dados reais
+            fetchDataFromSheets();
+        }
+        
+        // Atualizar dados do Google Sheets a cada 30 segundos
+        setInterval(fetchDataFromSheets, 30000);
+        
+        // Event Listeners
+        document.getElementById('configBtn').addEventListener('click', function() {
+            const panel = document.getElementById('configPanel');
+            panel.classList.toggle('hidden');
+        });
+        
+        // Atualizar config ao mudar inputs
+        ['tempMax', 'tempMin', 'humidadeMin', 'humidadeMax'].forEach(id => {
+            document.getElementById(id).addEventListener('change', function() {
+                config[id] = parseFloat(this.value);
+                updateUI();
+            });
+        });
+        
+        // Inicializar
+        fetchDataFromSheets(); // Buscar dados imediatamente
+        updateUI();
+    </script>
+</body>
+</html>
